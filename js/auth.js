@@ -191,3 +191,116 @@ export function renderAuthModal(onSuccess) {
   updateModalContent();
   document.querySelector('#app-shell').appendChild(backdrop);
 }
+
+// Full Startup Screen Authentication View (Rendered at app start)
+export function renderAuthScreen(container, onAuthSuccess, onGuestContinue) {
+  let mode = 'signin'; // 'signin' | 'signup'
+
+  function renderView() {
+    container.innerHTML = `
+      <div class="animate-fade-in-up" style="padding: 24px 12px; max-width: 440px; margin: 0 auto;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="font-size: 3.5rem; margin-bottom: 8px;">🪷</div>
+          <h2 style="font-size: 1.6rem; font-weight: 800;">Sadhana Monitor</h2>
+          <p style="color: var(--saffron); font-weight: 600; font-size: 0.9rem; margin-top: 2px;">"Chant Hare Krishna & Be Happy"</p>
+          <p class="subtitle" style="margin-top: 6px; font-size: 0.82rem;">
+            ${mode === 'signin' ? 'Sign in to access your spiritual practice log' : 'Register your profile to start tracking sadhana'}
+          </p>
+        </div>
+
+        <div class="card card-gradient-border" style="padding: 20px;">
+          <div style="display: flex; background: var(--bg-surface-2); border-radius: var(--radius-md); padding: 4px; margin-bottom: 18px;">
+            <button type="button" id="tab-auth-signin" class="btn btn-secondary" style="flex: 1; padding: 8px; font-size: 0.82rem; border: none; background: ${mode === 'signin' ? 'var(--saffron)' : 'transparent'}; color: ${mode === 'signin' ? '#fff' : 'var(--text-secondary)'}; font-weight: 600;">
+              🔐 Sign In
+            </button>
+            <button type="button" id="tab-auth-signup" class="btn btn-secondary" style="flex: 1; padding: 8px; font-size: 0.82rem; border: none; background: ${mode === 'signup' ? 'var(--saffron)' : 'transparent'}; color: ${mode === 'signup' ? '#fff' : 'var(--text-secondary)'}; font-weight: 600;">
+              🌸 Register
+            </button>
+          </div>
+
+          <form id="screen-auth-form" style="display: flex; flex-direction: column; gap: 14px;">
+            ${mode === 'signup' ? `
+              <div>
+                <label class="form-label">Devotee Display Name *</label>
+                <input type="text" id="scr-auth-name" placeholder="e.g. Himanshu" required />
+              </div>
+            ` : ''}
+
+            <div>
+              <label class="form-label">Email Address *</label>
+              <input type="email" id="scr-auth-email" placeholder="devotee@example.com" required />
+            </div>
+
+            <div>
+              <label class="form-label">Password *</label>
+              <input type="password" id="scr-auth-pass" placeholder="••••••••" required minlength="6" />
+            </div>
+
+            <div id="scr-auth-error-msg" style="font-size: 0.78rem; color: var(--rose); text-align: center; display: none;"></div>
+
+            <button type="submit" class="btn btn-primary" id="btn-scr-auth-submit" style="padding: 14px; margin-top: 6px; box-shadow: 0 4px 15px rgba(232, 115, 10, 0.3);">
+              ${mode === 'signin' ? 'Sign In 🙏' : 'Create Free Account & Start 🌸'}
+            </button>
+          </form>
+
+          <div style="margin-top: 16px; border-top: 1px dashed var(--border-light); padding-top: 14px; text-align: center;">
+            <button type="button" class="btn btn-secondary" id="btn-scr-auth-guest" style="font-size: 0.8rem; padding: 8px 12px; width: 100%;">
+              📱 Continue as Offline Guest Devotee
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    container.querySelector('#tab-auth-signin').addEventListener('click', () => {
+      mode = 'signin';
+      renderView();
+    });
+
+    container.querySelector('#tab-auth-signup').addEventListener('click', () => {
+      mode = 'signup';
+      renderView();
+    });
+
+    container.querySelector('#btn-scr-auth-guest').addEventListener('click', () => {
+      onGuestContinue();
+    });
+
+    const form = container.querySelector('#screen-auth-form');
+    const errEl = container.querySelector('#scr-auth-error-msg');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errEl.style.display = 'none';
+      const email = container.querySelector('#scr-auth-email').value.trim();
+      const password = container.querySelector('#scr-auth-pass').value;
+      const submitBtn = container.querySelector('#btn-scr-auth-submit');
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Authenticating...';
+
+      try {
+        if (mode === 'signup') {
+          const name = container.querySelector('#scr-auth-name').value.trim();
+          if (isCloudAuthEnabled()) {
+            await signUpUser(email, password, name);
+          }
+          onAuthSuccess({ email, name });
+        } else {
+          if (isCloudAuthEnabled()) {
+            await signInUser(email, password);
+          }
+          onAuthSuccess({ email });
+        }
+      } catch (err) {
+        errEl.textContent = err.message || 'Authentication failed. Please check credentials.';
+        errEl.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = mode === 'signin' ? 'Sign In 🙏' : 'Create Free Account & Start 🌸';
+      }
+    });
+  }
+
+  renderView();
+}
+

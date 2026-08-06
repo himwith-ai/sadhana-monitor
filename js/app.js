@@ -3,7 +3,7 @@
    ========================================================================== */
 
 import { initStorage, getProfiles, getActiveProfileId, setActiveProfileId, getProfile } from './storage.js';
-import { initAuth, isCloudAuthEnabled, getCurrentAuthUser, renderAuthModal } from './auth.js';
+import { initAuth, isCloudAuthEnabled, getCurrentAuthUser, renderAuthModal, renderAuthScreen } from './auth.js';
 import { renderProfileSelectScreen, renderOnboardingWizard, renderAvatarHTML } from './profiles.js';
 import { renderHomeScreen, getGreeting } from './home.js';
 import { renderEntryScreen } from './entry.js';
@@ -25,10 +25,14 @@ export const App = {
     this.applyTheme();
     this.bindEvents();
 
+    const authUser = getCurrentAuthUser();
     const profiles = getProfiles();
     const activeId = getActiveProfileId();
+    const authCompleted = localStorage.getItem('sadhana_auth_completed') === 'true';
 
-    if (profiles.length === 0) {
+    if (!authUser && !authCompleted) {
+      this.navigateTo('auth');
+    } else if (profiles.length === 0) {
       this.navigateTo('onboarding');
     } else if (!activeId || !getProfile(activeId)) {
       this.navigateTo('profile-select');
@@ -103,7 +107,7 @@ export const App = {
     const header = document.querySelector('#top-header');
     const profile = getProfile(this.state.activeProfileId);
 
-    if (!header || !profile || ['profile-select', 'onboarding'].includes(this.state.currentScreen)) {
+    if (!header || !profile || ['auth', 'profile-select', 'onboarding'].includes(this.state.currentScreen)) {
       if (header) header.style.display = 'none';
       return;
     }
@@ -125,7 +129,7 @@ export const App = {
     const nav = document.querySelector('#bottom-nav');
     const profile = getProfile(this.state.activeProfileId);
 
-    if (!nav || ['profile-select', 'onboarding'].includes(this.state.currentScreen)) {
+    if (!nav || ['auth', 'profile-select', 'onboarding'].includes(this.state.currentScreen)) {
       if (nav) nav.style.display = 'none';
       return;
     }
@@ -161,6 +165,38 @@ export const App = {
 
     // Render screen contents
     switch (screenName) {
+      case 'auth':
+        renderAuthScreen(
+          document.querySelector('#screen-auth'),
+          (userData) => {
+            localStorage.setItem('sadhana_auth_completed', 'true');
+            const profiles = getProfiles();
+            const activeId = getActiveProfileId();
+            if (profiles.length === 0) {
+              this.navigateTo('onboarding');
+            } else if (!activeId || !getProfile(activeId)) {
+              this.navigateTo('profile-select');
+            } else {
+              this.state.activeProfileId = activeId;
+              this.navigateTo('home');
+            }
+          },
+          () => {
+            localStorage.setItem('sadhana_auth_completed', 'true');
+            const profiles = getProfiles();
+            const activeId = getActiveProfileId();
+            if (profiles.length === 0) {
+              this.navigateTo('onboarding');
+            } else if (!activeId || !getProfile(activeId)) {
+              this.navigateTo('profile-select');
+            } else {
+              this.state.activeProfileId = activeId;
+              this.navigateTo('home');
+            }
+          }
+        );
+        break;
+
       case 'profile-select':
         renderProfileSelectScreen(
           document.querySelector('#screen-profile-select'),
