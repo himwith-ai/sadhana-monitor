@@ -3,7 +3,7 @@
    ========================================================================== */
 
 import { initStorage, getProfiles, getActiveProfileId, setActiveProfileId, getProfile } from './storage.js';
-import { initAuth, isCloudAuthEnabled, getCurrentAuthUser, renderAuthModal, renderAuthScreen } from './auth.js';
+import { initAuth, isCloudAuthEnabled, getCurrentAuthUser, renderAuthModal, renderAuthScreen, signOutUser } from './auth.js';
 import { renderProfileSelectScreen, renderOnboardingWizard, renderAvatarHTML } from './profiles.js';
 import { renderHomeScreen, getGreeting } from './home.js';
 import { renderEntryScreen } from './entry.js';
@@ -279,6 +279,18 @@ export const App = {
     const avatarEl = document.querySelector('#header-avatar');
     if (avatarEl) {
       avatarEl.addEventListener('click', () => this.navigateTo('profile-select'));
+    }
+
+    // Header Logout button -> Sign Out & Lock App
+    const logoutBtn = document.querySelector('#header-logout-btn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', async () => {
+        if (confirm('Sign out and return to Login screen?')) {
+          await signOutUser();
+          this.showToast('Signed out successfully');
+          this.navigateTo('auth');
+        }
+      });
     }
 
     // Keyboard Shortcuts

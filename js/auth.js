@@ -87,6 +87,29 @@ export async function signOutUser() {
     await supabaseClient.auth.signOut();
   }
   currentAuthUser = null;
+  localStorage.removeItem('sadhana_auth_completed');
+}
+
+export async function sendPasswordResetEmail(email) {
+  if (!supabaseClient) {
+    throw new Error('Cloud database connection not configured. Configure Supabase in Settings.');
+  }
+  const { data, error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}${window.location.pathname}#reset-password`
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function updateUserPassword(newPassword) {
+  if (!supabaseClient) {
+    throw new Error('Cloud database connection not configured.');
+  }
+  const { data, error } = await supabaseClient.auth.updateUser({
+    password: newPassword
+  });
+  if (error) throw error;
+  return data;
 }
 
 export function renderAuthModal(onSuccess) {
@@ -194,29 +217,41 @@ export function renderAuthModal(onSuccess) {
 
 // Full Startup Screen Authentication View (Rendered at app start)
 export function renderAuthScreen(container, onAuthSuccess, onGuestContinue) {
-  let mode = 'signin'; // 'signin' | 'signup'
+  let mode = 'signin'; // 'signin' | 'signup' | 'forgot'
+  let passwordVisible = false;
 
   function renderView() {
+    let subtitleText = 'Sign in to access your spiritual practice log';
+    if (mode === 'signup') subtitleText = 'Register your profile to start tracking sadhana';
+    if (mode === 'forgot') subtitleText = 'Enter your registered email to reset password';
+
     container.innerHTML = `
       <div class="animate-fade-in-up" style="padding: 24px 12px; max-width: 440px; margin: 0 auto;">
-        <div style="text-align: center; margin-bottom: 24px;">
+        <div style="text-align: center; margin-bottom: 20px;">
           <div style="font-size: 3.5rem; margin-bottom: 8px;">🪷</div>
           <h2 style="font-size: 1.6rem; font-weight: 800;">Sadhana Monitor</h2>
           <p style="color: var(--saffron); font-weight: 600; font-size: 0.9rem; margin-top: 2px;">"Chant Hare Krishna & Be Happy"</p>
-          <p class="subtitle" style="margin-top: 6px; font-size: 0.82rem;">
-            ${mode === 'signin' ? 'Sign in to access your spiritual practice log' : 'Register your profile to start tracking sadhana'}
-          </p>
+          <p class="subtitle" style="margin-top: 6px; font-size: 0.82rem;">${subtitleText}</p>
         </div>
 
         <div class="card card-gradient-border" style="padding: 20px;">
-          <div style="display: flex; background: var(--bg-surface-2); border-radius: var(--radius-md); padding: 4px; margin-bottom: 18px;">
-            <button type="button" id="tab-auth-signin" class="btn btn-secondary" style="flex: 1; padding: 8px; font-size: 0.82rem; border: none; background: ${mode === 'signin' ? 'var(--saffron)' : 'transparent'}; color: ${mode === 'signin' ? '#fff' : 'var(--text-secondary)'}; font-weight: 600;">
-              🔐 Sign In
-            </button>
-            <button type="button" id="tab-auth-signup" class="btn btn-secondary" style="flex: 1; padding: 8px; font-size: 0.82rem; border: none; background: ${mode === 'signup' ? 'var(--saffron)' : 'transparent'}; color: ${mode === 'signup' ? '#fff' : 'var(--text-secondary)'}; font-weight: 600;">
-              🌸 Register
-            </button>
-          </div>
+          ${mode !== 'forgot' ? `
+            <div style="display: flex; background: var(--bg-surface-2); border-radius: var(--radius-md); padding: 4px; margin-bottom: 18px;">
+              <button type="button" id="tab-auth-signin" class="btn btn-secondary" style="flex: 1; padding: 8px; font-size: 0.82rem; border: none; background: ${mode === 'signin' ? 'var(--saffron)' : 'transparent'}; color: ${mode === 'signin' ? '#fff' : 'var(--text-secondary)'}; font-weight: 600;">
+                🔐 Sign In
+              </button>
+              <button type="button" id="tab-auth-signup" class="btn btn-secondary" style="flex: 1; padding: 8px; font-size: 0.82rem; border: none; background: ${mode === 'signup' ? 'var(--saffron)' : 'transparent'}; color: ${mode === 'signup' ? '#fff' : 'var(--text-secondary)'}; font-weight: 600;">
+                🌸 Register
+              </button>
+            </div>
+          ` : `
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+              <h3 style="font-size: 1.05rem;">🔑 Reset Password</h3>
+              <button type="button" class="btn btn-secondary" id="btn-back-to-signin" style="width: auto; padding: 4px 10px; font-size: 0.75rem;">← Back to Sign In</button>
+            </div>
+          `}
+
+          <div id="scr-auth-info-msg" style="font-size: 0.82rem; color: var(--mint); background: var(--mint-light); padding: 10px; border-radius: var(--radius-md); margin-bottom: 14px; text-align: center; display: none;"></div>
 
           <form id="screen-auth-form" style="display: flex; flex-direction: column; gap: 14px;">
             ${mode === 'signup' ? `
@@ -231,15 +266,26 @@ export function renderAuthScreen(container, onAuthSuccess, onGuestContinue) {
               <input type="email" id="scr-auth-email" placeholder="devotee@example.com" required />
             </div>
 
-            <div>
-              <label class="form-label">Password *</label>
-              <input type="password" id="scr-auth-pass" placeholder="••••••••" required minlength="6" />
-            </div>
+            ${mode !== 'forgot' ? `
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label class="form-label">Password *</label>
+                  ${mode === 'signin' ? `<a href="#" id="link-forgot-pass" style="font-size: 0.75rem; color: var(--saffron); text-decoration: none; font-weight: 600;">Forgot Password?</a>` : ''}
+                </div>
+                <div style="position: relative;">
+                  <input type="${passwordVisible ? 'text' : 'password'}" id="scr-auth-pass" placeholder="••••••••" required minlength="6" style="padding-right: 40px;" />
+                  <button type="button" id="btn-toggle-pass" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 1rem;">
+                    ${passwordVisible ? '🙈' : '👁️'}
+                  </button>
+                </div>
+                ${mode === 'signup' ? `<div id="pass-strength" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">Min 6 characters</div>` : ''}
+              </div>
+            ` : ''}
 
             <div id="scr-auth-error-msg" style="font-size: 0.78rem; color: var(--rose); text-align: center; display: none;"></div>
 
             <button type="submit" class="btn btn-primary" id="btn-scr-auth-submit" style="padding: 14px; margin-top: 6px; box-shadow: 0 4px 15px rgba(232, 115, 10, 0.3);">
-              ${mode === 'signin' ? 'Sign In 🙏' : 'Create Free Account & Start 🌸'}
+              ${mode === 'signin' ? 'Sign In 🙏' : mode === 'signup' ? 'Create Free Account & Start 🌸' : 'Send Password Reset Link 📧'}
             </button>
           </form>
 
@@ -252,15 +298,56 @@ export function renderAuthScreen(container, onAuthSuccess, onGuestContinue) {
       </div>
     `;
 
-    container.querySelector('#tab-auth-signin').addEventListener('click', () => {
-      mode = 'signin';
-      renderView();
-    });
+    if (mode !== 'forgot') {
+      container.querySelector('#tab-auth-signin').addEventListener('click', () => {
+        mode = 'signin';
+        renderView();
+      });
+      container.querySelector('#tab-auth-signup').addEventListener('click', () => {
+        mode = 'signup';
+        renderView();
+      });
+    } else {
+      const backBtn = container.querySelector('#btn-back-to-signin');
+      if (backBtn) backBtn.addEventListener('click', () => { mode = 'signin'; renderView(); });
+    }
 
-    container.querySelector('#tab-auth-signup').addEventListener('click', () => {
-      mode = 'signup';
-      renderView();
-    });
+    const forgotLink = container.querySelector('#link-forgot-pass');
+    if (forgotLink) {
+      forgotLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        mode = 'forgot';
+        renderView();
+      });
+    }
+
+    const togglePassBtn = container.querySelector('#btn-toggle-pass');
+    if (togglePassBtn) {
+      togglePassBtn.addEventListener('click', () => {
+        passwordVisible = !passwordVisible;
+        const passInp = container.querySelector('#scr-auth-pass');
+        if (passInp) passInp.type = passwordVisible ? 'text' : 'password';
+        togglePassBtn.textContent = passwordVisible ? '🙈' : '👁️';
+      });
+    }
+
+    const passInp = container.querySelector('#scr-auth-pass');
+    const strengthEl = container.querySelector('#pass-strength');
+    if (passInp && strengthEl) {
+      passInp.addEventListener('input', () => {
+        const val = passInp.value;
+        if (val.length < 6) {
+          strengthEl.textContent = 'Weak (Min 6 characters)';
+          strengthEl.style.color = 'var(--rose)';
+        } else if (val.length < 10) {
+          strengthEl.textContent = 'Medium strength';
+          strengthEl.style.color = 'var(--gold)';
+        } else {
+          strengthEl.textContent = 'Strong password ✓';
+          strengthEl.style.color = 'var(--mint)';
+        }
+      });
+    }
 
     container.querySelector('#btn-scr-auth-guest').addEventListener('click', () => {
       onGuestContinue();
@@ -268,22 +355,53 @@ export function renderAuthScreen(container, onAuthSuccess, onGuestContinue) {
 
     const form = container.querySelector('#screen-auth-form');
     const errEl = container.querySelector('#scr-auth-error-msg');
+    const infoEl = container.querySelector('#scr-auth-info-msg');
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       errEl.style.display = 'none';
+      if (infoEl) infoEl.style.display = 'none';
+
       const email = container.querySelector('#scr-auth-email').value.trim();
-      const password = container.querySelector('#scr-auth-pass').value;
       const submitBtn = container.querySelector('#btn-scr-auth-submit');
 
+      if (mode === 'forgot') {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Sending Link...';
+        try {
+          if (isCloudAuthEnabled()) {
+            await sendPasswordResetEmail(email);
+          }
+          if (infoEl) {
+            infoEl.textContent = `📧 Password reset link sent to ${email}. Please check your inbox.`;
+            infoEl.style.display = 'block';
+          }
+          submitBtn.textContent = 'Link Sent ✓';
+        } catch (err) {
+          errEl.textContent = err.message || 'Failed to send reset link.';
+          errEl.style.display = 'block';
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Send Password Reset Link 📧';
+        }
+        return;
+      }
+
+      const password = container.querySelector('#scr-auth-pass').value;
       submitBtn.disabled = true;
       submitBtn.textContent = 'Authenticating...';
 
       try {
         if (mode === 'signup') {
           const name = container.querySelector('#scr-auth-name').value.trim();
+          let createdUser = null;
           if (isCloudAuthEnabled()) {
-            await signUpUser(email, password, name);
+            createdUser = await signUpUser(email, password, name);
+          }
+          if (createdUser && !createdUser.email_confirmed_at && createdUser.identities?.length > 0) {
+            if (infoEl) {
+              infoEl.textContent = '✉️ Account created! Please check your email to verify your account.';
+              infoEl.style.display = 'block';
+            }
           }
           onAuthSuccess({ email, name });
         } else {
