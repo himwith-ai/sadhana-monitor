@@ -411,7 +411,11 @@ export function renderAuthScreen(container, onAuthSuccess, onGuestContinue) {
           onAuthSuccess({ email });
         }
       } catch (err) {
-        errEl.textContent = err.message || 'Authentication failed. Please check credentials.';
+        let msg = err.message || 'Authentication failed. Please check credentials.';
+        if (msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('rate')) {
+          msg = '⚠️ Email Rate Limit Exceeded: Supabase default email service limits to 3 emails/hour.\n\n👉 Fix: In your Supabase Dashboard -> Authentication -> Providers -> Email, turn OFF "Confirm Email" for instant sign-ups, or try Signing In directly!';
+        }
+        errEl.textContent = msg;
         errEl.style.display = 'block';
         submitBtn.disabled = false;
         submitBtn.textContent = mode === 'signin' ? 'Sign In 🙏' : 'Create Free Account & Start 🌸';

@@ -2,7 +2,7 @@
    🪷 SADHANA MONITOR — SERVICE WORKER FOR OFFLINE PWA (sw.js)
    ========================================================================== */
 
-const CACHE_NAME = 'sadhana-pwa-v3';
+const CACHE_NAME = 'sadhana-pwa-v4';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
