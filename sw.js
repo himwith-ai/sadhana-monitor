@@ -2,7 +2,7 @@
    🪷 SADHANA MONITOR — SERVICE WORKER FOR OFFLINE PWA (sw.js)
    ========================================================================== */
 
-const CACHE_NAME = 'sadhana-pwa-v1';
+const CACHE_NAME = 'sadhana-pwa-v2';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -26,15 +26,16 @@ const ASSETS_TO_CACHE = [
 
 // Install Event — Pre-cache App Shell Assets
 self.addEventListener('install', (evt) => {
+  self.skipWaiting();
   evt.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] Pre-caching app shell assets');
+      console.log('[SW] Pre-caching app shell assets v2');
       return cache.addAll(ASSETS_TO_CACHE);
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
-// Activate Event — Clean up Old Caches
+// Activate Event — Clean up Old Caches & Claim Clients Immediately
 self.addEventListener('activate', (evt) => {
   evt.waitUntil(
     caches.keys().then((keys) => {
@@ -50,31 +51,19 @@ self.addEventListener('activate', (evt) => {
   );
 });
 
-// Fetch Event — Cache-First Strategy with Network Fallback
+// Fetch Event — Network-First Strategy with Cache Fallback for instant live updates
 self.addEventListener('fetch', (evt) => {
-  // Only intercept GET requests
   if (evt.request.method !== 'GET') return;
 
   evt.respondWith(
-    caches.match(evt.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // Return cached asset and update cache in background
-        fetch(evt.request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => cache.put(evt.request, networkResponse));
-          }
-        }).catch(() => {});
-        return cachedResponse;
+    fetch(evt.request).then((networkResponse) => {
+      if (networkResponse && networkResponse.status === 200) {
+        const responseClone = networkResponse.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(evt.request, responseClone));
       }
-
-      return fetch(evt.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
-          return networkResponse;
-        }
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(evt.request, responseToCache));
-        return networkResponse;
-      });
+      return networkResponse;
+    }).catch(() => {
+      return caches.match(evt.request);
     })
   );
 });

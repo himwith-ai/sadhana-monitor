@@ -30,10 +30,11 @@ export const App = {
     const activeId = getActiveProfileId();
     const authCompleted = localStorage.getItem('sadhana_auth_completed') === 'true';
 
-    if (!authUser && !authCompleted) {
+    const isCloud = isCloudAuthEnabled();
+    if (isCloud && !authUser) {
       this.navigateTo('auth');
     } else if (profiles.length === 0) {
-      this.navigateTo('onboarding');
+      this.navigateTo('auth');
     } else if (!activeId || !getProfile(activeId)) {
       this.navigateTo('profile-select');
     } else {
