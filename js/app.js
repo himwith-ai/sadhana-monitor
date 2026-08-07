@@ -3,7 +3,7 @@
    ========================================================================== */
 
 import { initStorage, getProfiles, getActiveProfileId, setActiveProfileId, getProfile } from './storage.js';
-import { initAuth, isCloudAuthEnabled, getCurrentAuthUser, renderAuthModal, renderAuthScreen, signOutUser } from './auth.js';
+import { initAuth, isCloudAuthEnabled, getCurrentAuthUser, renderAuthModal, renderAuthScreen, signOutUser, getOrRestoreSession, getCachedSessionUser } from './auth.js';
 import { renderProfileSelectScreen, renderOnboardingWizard, renderAvatarHTML } from './profiles.js';
 import { renderHomeScreen, getGreeting } from './home.js';
 import { renderEntryScreen } from './entry.js';
@@ -18,23 +18,27 @@ export const App = {
     selectedEntryDate: new Date().toISOString().split('T')[0]
   },
 
-  init() {
+  async init() {
     initStorage();
     initAuth();
     this.registerServiceWorker();
     this.applyTheme();
     this.bindEvents();
 
-    const authUser = getCurrentAuthUser();
+    // Bug Fix: Await session resolution BEFORE making any routing decisions.
+    // initAuth() only creates the client; the actual session check is async.
+    const authUser = await getOrRestoreSession();
     const profiles = getProfiles();
     const activeId = getActiveProfileId();
-    const authCompleted = localStorage.getItem('sadhana_auth_completed') === 'true';
 
     const isCloud = isCloudAuthEnabled();
+
     if (isCloud && !authUser) {
+      // Cloud mode + no session = must sign in
       this.navigateTo('auth');
     } else if (profiles.length === 0) {
-      this.navigateTo('auth');
+      // Authenticated but no profile yet = go to onboarding
+      this.navigateTo('onboarding');
     } else if (!activeId || !getProfile(activeId)) {
       this.navigateTo('profile-select');
     } else {
@@ -150,9 +154,10 @@ export const App = {
     });
   },
 
-  navigateTo(screenName, dateParam) {
+  navigateTo(screenName, dateParam, prefillData) {
     this.state.currentScreen = screenName;
     if (dateParam) this.state.selectedEntryDate = dateParam;
+    if (prefillData) this.state.onboardingPrefill = prefillData;
 
     const screens = document.querySelectorAll('.screen');
     screens.forEach(s => s.classList.remove('active'));
@@ -169,12 +174,13 @@ export const App = {
       case 'auth':
         renderAuthScreen(
           document.querySelector('#screen-auth'),
+          // onAuthSuccess: called after sign-in OR register
           (userData) => {
-            localStorage.setItem('sadhana_auth_completed', 'true');
             const profiles = getProfiles();
             const activeId = getActiveProfileId();
             if (profiles.length === 0) {
-              this.navigateTo('onboarding');
+              // New user: go to onboarding, pre-fill name from registration
+              this.navigateTo('onboarding', null, userData);
             } else if (!activeId || !getProfile(activeId)) {
               this.navigateTo('profile-select');
             } else {
@@ -182,8 +188,8 @@ export const App = {
               this.navigateTo('home');
             }
           },
+          // onGuestContinue: offline mode
           () => {
-            localStorage.setItem('sadhana_auth_completed', 'true');
             const profiles = getProfiles();
             const activeId = getActiveProfileId();
             if (profiles.length === 0) {
@@ -215,8 +221,10 @@ export const App = {
           (id) => {
             this.state.activeProfileId = id;
             this.navigateTo('home');
-          }
+          },
+          this.state.onboardingPrefill || {}
         );
+        this.state.onboardingPrefill = null; // clear after use
         break;
 
       case 'home':

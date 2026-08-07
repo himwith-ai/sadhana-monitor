@@ -84,10 +84,10 @@ export function renderProfileSelectScreen(container, onSelectProfile, onAddNew) 
 // --------------------------------------------------------------------------
 // Onboarding Wizard Implementation
 // --------------------------------------------------------------------------
-export function renderOnboardingWizard(container, onComplete) {
+export function renderOnboardingWizard(container, onComplete, prefillData = {}) {
   let step = 1;
   const formData = {
-    name: '',
+    name: prefillData.name || '',
     initiatedName: '',
     guruName: '',
     avatarType: 'preset',

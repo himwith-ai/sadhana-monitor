@@ -8,22 +8,82 @@ export const AuthConfig = {
   supabaseKey: window.SADHANA_CONFIG?.SUPABASE_ANON_KEY || localStorage.getItem('sadhana_supabase_key') || ''
 };
 
+const SESSION_CACHE_KEY = 'sadhana_session_user';
 let supabaseClient = null;
 let currentAuthUser = null;
 
-// Initialize Supabase Client if credentials exist
+// --------------------------------------------------------------------------
+// Persist session user to localStorage for page-reload resilience
+// --------------------------------------------------------------------------
+function cacheSessionUser(user) {
+  if (user) {
+    try {
+      localStorage.setItem(SESSION_CACHE_KEY, JSON.stringify({
+        id: user.id,
+        email: user.email,
+        name: user.user_metadata?.name || user.email?.split('@')[0] || 'Devotee'
+      }));
+    } catch (_) {}
+  } else {
+    localStorage.removeItem(SESSION_CACHE_KEY);
+  }
+}
+
+export function getCachedSessionUser() {
+  try {
+    const raw = localStorage.getItem(SESSION_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+export function clearCachedSession() {
+  localStorage.removeItem(SESSION_CACHE_KEY);
+  localStorage.removeItem('sadhana_auth_completed');
+  currentAuthUser = null;
+}
+
+// --------------------------------------------------------------------------
+// Initialize Supabase Client
+// --------------------------------------------------------------------------
 export function initAuth() {
   if (window.supabase && AuthConfig.supabaseUrl && AuthConfig.supabaseKey) {
     try {
       supabaseClient = window.supabase.createClient(AuthConfig.supabaseUrl, AuthConfig.supabaseKey);
       console.log('[Auth] Supabase production client initialized');
-      checkSession();
     } catch (err) {
       console.warn('[Auth] Failed to initialize Supabase client:', err);
     }
   } else {
-    console.log('[Auth] Operating in Offline / Local Profile mode (configure Supabase in Settings for cloud auth)');
+    console.log('[Auth] Operating in Offline / Local Profile mode');
   }
+}
+
+// --------------------------------------------------------------------------
+// Async session resolution — MUST be awaited before routing decisions
+// --------------------------------------------------------------------------
+export async function getOrRestoreSession() {
+  // 1. Try live Supabase session first
+  if (supabaseClient) {
+    try {
+      const { data: { session }, error } = await supabaseClient.auth.getSession();
+      if (!error && session?.user) {
+        currentAuthUser = session.user;
+        cacheSessionUser(session.user);
+        return session.user;
+      }
+    } catch (err) {
+      console.warn('[Auth] getSession error:', err);
+    }
+  }
+  // 2. Fall back to localStorage cache (covers page refresh while offline)
+  const cached = getCachedSessionUser();
+  if (cached) {
+    currentAuthUser = cached;
+    return cached;
+  }
+  return null;
 }
 
 export function isCloudAuthEnabled() {
@@ -32,21 +92,6 @@ export function isCloudAuthEnabled() {
 
 export function getCurrentAuthUser() {
   return currentAuthUser;
-}
-
-export async function checkSession() {
-  if (!supabaseClient) return null;
-  try {
-    const { data: { session }, error } = await supabaseClient.auth.getSession();
-    if (error) throw error;
-    if (session) {
-      currentAuthUser = session.user;
-      return session.user;
-    }
-  } catch (err) {
-    console.error('[Auth] Error checking auth session:', err);
-  }
-  return null;
 }
 
 export async function signUpUser(email, password, displayName) {
@@ -64,6 +109,7 @@ export async function signUpUser(email, password, displayName) {
 
   if (error) throw error;
   currentAuthUser = data.user;
+  cacheSessionUser(data.user);
   return data.user;
 }
 
@@ -79,15 +125,15 @@ export async function signInUser(email, password) {
 
   if (error) throw error;
   currentAuthUser = data.user;
+  cacheSessionUser(data.user);
   return data.user;
 }
 
 export async function signOutUser() {
   if (supabaseClient) {
-    await supabaseClient.auth.signOut();
+    try { await supabaseClient.auth.signOut(); } catch (_) {}
   }
-  currentAuthUser = null;
-  localStorage.removeItem('sadhana_auth_completed');
+  clearCachedSession();
 }
 
 export async function sendPasswordResetEmail(email) {
